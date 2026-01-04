@@ -9,25 +9,53 @@ struct Tensor4D {
 
     Tensor4D(unsigned int const shape_[4], T const *data_) {
         unsigned int size = 1;
-        // TODO: 填入正确的 shape 并计算 size
+        // 1. 初始化 shape 并计算总大小
+        for (int i = 0; i < 4; ++i) {
+            shape[i] = shape_[i];
+            size *= shape[i];
+        }
+
         data = new T[size];
+        // 使用 std::memcpy 进行快速内存拷贝
         std::memcpy(data, data_, size * sizeof(T));
     }
+
     ~Tensor4D() {
         delete[] data;
     }
 
-    // 为了保持简单，禁止复制和移动
     Tensor4D(Tensor4D const &) = delete;
     Tensor4D(Tensor4D &&) noexcept = delete;
 
-    // 这个加法需要支持“单向广播”。
-    // 具体来说，`others` 可以具有与 `this` 不同的形状，形状不同的维度长度必须为 1。
-    // `others` 长度为 1 但 `this` 长度不为 1 的维度将发生广播计算。
-    // 例如，`this` 形状为 `[1, 2, 3, 4]`，`others` 形状为 `[1, 2, 1, 4]`，
-    // 则 `this` 与 `others` 相加时，3 个形状为 `[1, 2, 1, 4]` 的子张量各自与 `others` 对应项相加。
     Tensor4D &operator+=(Tensor4D const &others) {
-        // TODO: 实现单向广播的加法
+        // 预计算 others 的维度步长，用于快速计算偏移量
+        // 如果 others 在某维度长度为 1，则在该维度移动时偏移增量为 0（广播核心）
+        unsigned int o_stride[4];
+        o_stride[3] = (others.shape[3] == 1) ? 0 : 1;
+        o_stride[2] = (others.shape[2] == 1) ? 0 : others.shape[3];
+        o_stride[1] = (others.shape[1] == 1) ? 0 : (others.shape[2] * others.shape[3]);
+        o_stride[0] = (others.shape[0] == 1) ? 0 : (others.shape[1] * others.shape[2] * others.shape[3]);
+
+        // 遍历当前张量的所有元素
+        unsigned int curr_idx = 0;
+        for (unsigned int i = 0; i < shape[0]; ++i) {
+            for (unsigned int j = 0; j < shape[1]; ++j) {
+                for (unsigned int k = 0; k < shape[2]; ++k) {
+                    for (unsigned int l = 0; l < shape[3]; ++l) {
+
+                        // 计算 others 对应的展平索引
+                        // 利用 pre-calculated strides，如果 others 该维是 1，则对应索引会自动归零
+                        unsigned int others_idx = i * o_stride[0] + 
+                                                  j * o_stride[1] + 
+                                                  k * o_stride[2] + 
+                                                  l * o_stride[3];
+
+                        data[curr_idx] += others.data[others_idx];
+                        curr_idx++;
+                    }
+                }
+            }
+        }
         return *this;
     }
 };
